@@ -110,7 +110,7 @@ class NetworkApplication:
 
 class ICMPPing(NetworkApplication):
 
-    def receiveOnePing(self, icmpSocket, destinationAddress, ID, timeout):
+    def receiveOnePing(self, icmpSocket : socket.socket, destinationAddress : str, ID : int, timeout : int) -> tuple[int,int,int,int]:
         icmpSocket.settimeout(timeout)
         # 1. Wait for the socket to receive a reply
         # 2. If reply received, record time of receipt, otherwise, handle timeout
@@ -129,9 +129,9 @@ class ICMPPing(NetworkApplication):
             print("ID NOT MATCHED")
             return 0,0,0,0
         # 6. Return time of receipt, TTL, packetSize, sequence number
-        return time.time_ns(), ipHeader[5], ipHeader[2], icmpHeader[4]
+        return time.time_ns()/1000000, ipHeader[5], ipHeader[2], icmpHeader[4]
 
-    def sendOnePing(self, icmpSocket, seq_num, destinationAddress, ID):
+    def sendOnePing(self, icmpSocket: socket.socket, seq_num : int, destinationAddress : str, ID : int) -> int:
         # 1. Build ICMP header
         checksum = 0
         packet = struct.pack(
@@ -156,11 +156,11 @@ class ICMPPing(NetworkApplication):
         # 4. Send packet using socket
         icmpSocket.sendto(packet,(destinationAddress,1))
         # 5. Return time of sending
-        return time.time_ns()
+        return time.time_ns()/1000000
 
-    def doOnePing(self, destinationAddress, packetID, seq_num, timeout):
+    def doOnePing(self, destinationAddress : str, packetID : int, seq_num : int, timeout : int):
         # 1. Create ICMP socket
-        sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        sock = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
         # 2. Call sendOnePing function
         sendTime = self.sendOnePing(sock,seq_num,destinationAddress,packetID)
         # 3. Call receiveOnePing function
@@ -168,8 +168,12 @@ class ICMPPing(NetworkApplication):
         # 4. Close ICMP socket
         sock.close()
         # 5. Print out the delay (and other relevant details) using the printOneResult method, below is just an example.
-        self.printOneResult(destinationAddress,packetSize,recieveTime-sendTime,seqNum,TTL,socket.gethostbyaddr(destinationAddress)) # Example use of printOneResult - complete as appropriate
-        pass
+        try:
+            hostname = socket.gethostbyaddr(destinationAddress)[0]
+        except:
+            hostname = destinationAddress
+        self.printOneResult(destinationAddress,packetSize,recieveTime-sendTime,seqNum,TTL,hostname) # Example use of printOneResult - complete as appropriate
+        return
 
     def __init__(self, args):
         print('Ping to: %s...' % (args.hostname))
