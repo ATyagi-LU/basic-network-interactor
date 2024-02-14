@@ -185,10 +185,60 @@ class ICMPPing(NetworkApplication):
             time.sleep(1)
             # 3. Call doOnePing function, approximately every second, below is just an example
 
-class Traceroute(NetworkApplication):
+class Traceroute(ICMPPing):
+
+    def ICMPTrace(self):
+        return
+
+    def trace(self,protocol,destinationAddress, timeout, ID, seq_num):
+        
+        if (protocol == 'icmp'):
+            log = []
+            sock = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
+            sock.settimeout(timeout)
+            ttl = 0
+            icmpHeader = [11]
+            while icmpHeader[0] == 11:
+                ttl+=1
+                print("ttl incrememnted")
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL,ttl)
+                print("socket set")
+                super().sendOnePing(sock,seq_num,destinationAddress,ID)
+                print("ping sent with TTL = " + str(ttl))
+                try:
+                    print("attempting recieve")
+                    packet = sock.recv(1024)
+                    print("received")
+                    ipHeader = struct.unpack("!BBHHHBBHII",packet[:20])
+                    ipHeaderSize = (ipHeader[0] & 15)*4
+                    icmpHeader = struct.unpack("!BBHHH", packet[ipHeaderSize:ipHeaderSize+8])
+                    if icmpHeader[0] == 3:
+                        print("unreachable")
+                        return
+                except TimeoutError:
+                    print("timeout") 
+                
+
+
+            
+
+            
+        elif protocol == 'udp' : 
+            sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,socket.IPPROTO_UDP)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL,1)
+
+        else:
+            print("invalid or unsupported protocol")
+        return
+    
+    def doUDPping():
+        return
 
     def __init__(self, args):
         print('Traceroute to: %s...' % (args.hostname))
+        address =  socket.gethostbyname(args.hostname)
+        self.trace(args.protocol,address,10,1,args.timeout)
+        
 
 class WebServer(NetworkApplication):
 
