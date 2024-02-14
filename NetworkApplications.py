@@ -110,26 +110,25 @@ class NetworkApplication:
 
 class ICMPPing(NetworkApplication):
 
-    def receiveOnePing(self, icmpSocket : socket.socket, destinationAddress : str, ID : int, timeout : int) -> tuple[int,int,int,int]:
+    def receiveOnePing(self, icmpSocket : socket.socket, destinationAddress : str, ID : int, timeout : int) -> tuple[int,int,int,int]:  
         icmpSocket.settimeout(timeout)
         # 1. Wait for the socket to receive a reply
         # 2. If reply received, record time of receipt, otherwise, handle timeout
         try:
             packet = icmpSocket.recv(1024)        
         except TimeoutError:
-            print("timeout")
-            return 0,0,0,0
+            return 0,0,0,0,1,0
         # 3. Unpack the imcp and ip headers for useful information, including Identifier, TTL, sequence number
         ipHeader = struct.unpack("!BBHHHBBHII",packet[:20])
         ipHeaderSize = (ipHeader[0] & 15)*4
         icmpHeader = struct.unpack("!BBHHH", packet[ipHeaderSize:ipHeaderSize+8])
         # 5. Check that the Identifier (ID) matches between the request and reply
         id = icmpHeader[3]
-        if (id != ID):
-            print("ID NOT MATCHED")
-            return 0,0,0,0
-        # 6. Return time of receipt, TTL, packetSize, sequence number
-        return time.time_ns()/1000000, ipHeader[5], ipHeader[2], icmpHeader[4]
+        if (id != ID and icmpHeader[0] == 0):
+            return 0,0,0,0,1,0
+        # 6. Return time of receipt, TTL, packetSize, sequence number, code
+        
+        return time.time_ns()/1000000, ipHeader[5], ipHeader[2], icmpHeader[4], icmpHeader[0], ipHeader[-2]
 
     def sendOnePing(self, icmpSocket: socket.socket, seq_num : int, destinationAddress : str, ID : int) -> int:
         # 1. Build ICMP header
@@ -164,7 +163,7 @@ class ICMPPing(NetworkApplication):
         # 2. Call sendOnePing function
         sendTime = self.sendOnePing(sock,seq_num,destinationAddress,packetID)
         # 3. Call receiveOnePing function
-        recieveTime, TTL, packetSize, seqNum = self.receiveOnePing(sock,destinationAddress,packetID,timeout)
+        recieveTime, TTL, packetSize, seqNum, _, _ = self.receiveOnePing(sock,destinationAddress,packetID,timeout)
         # 4. Close ICMP socket
         sock.close()
         # 5. Print out the delay (and other relevant details) using the printOneResult method, below is just an example.
@@ -187,57 +186,48 @@ class ICMPPing(NetworkApplication):
 
 class Traceroute(ICMPPing):
 
-    def ICMPTrace(self):
-        return
+    def sendUDPping(self,socket,destinationAddress):
+        socket.sendto(b'',(destinationAddress,80))
+        return time.time_ns() / 1000000
 
     def trace(self,protocol,destinationAddress, timeout, ID, seq_num):
         
-        if (protocol == 'icmp'):
-            log = []
-            sock = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
-            sock.settimeout(timeout)
-            ttl = 0
-            icmpHeader = [11]
-            while icmpHeader[0] == 11:
-                ttl+=1
-                print("ttl incrememnted")
-                sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL,ttl)
-                print("socket set")
-                super().sendOnePing(sock,seq_num,destinationAddress,ID)
-                print("ping sent with TTL = " + str(ttl))
+        
+        sockUDP = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,socket.IPPROTO_UDP)
+        sock = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
+        sock.settimeout(timeout)
+        ttl = 0
+        icmpcode = 11
+        while icmpcode not in [0,3]:
+            ttl+=1
+            sock.setsockopt(socket.SOL_IP, socket.IP_TTL,ttl)
+            sockUDP.setsockopt(socket.SOL_IP, socket.IP_TTL,ttl)
+            measurements = []
+            for i in range(3):
+                #print("socket set")
+                if (protocol == 'icmp'):
+                    sendTime = super().sendOnePing(sock,seq_num,destinationAddress,ID)
+                elif(protocol == 'udp'):
+                    sendTime = self.sendUDPping(sockUDP,destinationAddress)
+                #print("ping sent with TTL = " + str(ttl))
+                recieveTime, TTL, packetSize, seqNum, icmpcode, recDestAddr = super().receiveOnePing(sock,destinationAddress,ID,timeout)
+
+                if recieveTime == 0:
+                    measurements.append(None)
+                else:
+                    measurements.append(recieveTime-sendTime)
+                recDestAddr = socket.inet_ntoa(struct.pack("!I", recDestAddr))
                 try:
-                    print("attempting recieve")
-                    packet = sock.recv(1024)
-                    print("received")
-                    ipHeader = struct.unpack("!BBHHHBBHII",packet[:20])
-                    ipHeaderSize = (ipHeader[0] & 15)*4
-                    icmpHeader = struct.unpack("!BBHHH", packet[ipHeaderSize:ipHeaderSize+8])
-                    if icmpHeader[0] == 3:
-                        print("unreachable")
-                        return
-                except TimeoutError:
-                    print("timeout") 
-                
-
-
-            
-
-            
-        elif protocol == 'udp' : 
-            sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM,socket.IPPROTO_UDP)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL,1)
-
-        else:
-            print("invalid or unsupported protocol")
-        return
+                    hostname = socket.gethostbyaddr(recDestAddr)[0]
+                except:
+                    hostname = recDestAddr
+            self.printOneTraceRouteIteration(ttl,recDestAddr, measurements,hostname)    
     
-    def doUDPping():
-        return
 
     def __init__(self, args):
         print('Traceroute to: %s...' % (args.hostname))
         address =  socket.gethostbyname(args.hostname)
-        self.trace(args.protocol,address,10,1,args.timeout)
+        self.trace(args.protocol,address,args.timeout,10,1)
         
 
 class WebServer(NetworkApplication):
