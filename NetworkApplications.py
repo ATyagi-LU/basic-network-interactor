@@ -236,7 +236,6 @@ class WebServer(NetworkApplication):
         # 1. Receive request message from the client on connection socket
         data = tcpSocket.recv(2048)
         # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        httpsHeader = data.decode()
         filePath = "." + data.split()[1].decode()
 
         try:
@@ -277,8 +276,73 @@ class WebServer(NetworkApplication):
 
 class Proxy(NetworkApplication):
 
+    def handleRequest(self, tcpSocket : socket.socket):
+        # 1. Receive request message from the client on connection socket
+        data = tcpSocket.recv(2048)
+        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
+        req = data.decode()
+        buffer = b''
+
+        if data in self.cache:
+            buffer = self.cache[data]
+
+        else:
+        
+            try:
+                # 3. Read the corresponding file from disk
+                proxySock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                proxySock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR, 1)                                                                                                                                                                                                                                                         
+
+                proxySock.connect((req.split()[4],80))
+                proxySock.sendall(req.encode())
+                recieving = True
+                while recieving:
+                    try:
+                        proxData = proxySock.recv(1024)
+                        if not proxData:
+                            recieving = False
+                        else:
+                            buffer += proxData
+                    except TimeoutError:
+                        buffer = b'HTTP/1.1 408 Timeout\r\nContent-Type: text/html\r\n\r\n'
+                        buffer += b'<html><body><p>408 Timeout</p></body></html>'
+                        tcpSocket.send(buffer)
+                        tcpSocket.close()
+                        return
+
+                self.cache[data] = buffer
+
+
+            except FileNotFoundError:
+                # 5. Send the correct HTTP response error
+                buffer = b'HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n'
+                buffer += b'<html><body><p>404 Not Found</p></body></html>'
+                tcpSocket.send(buffer.encode())
+                tcpSocket.close()
+                return
+        # 6. Send the content of the file to the socket
+        tcpSocket.send(buffer)
+        # 7. Close the connection socket
+        tcpSocket.close()
+
     def __init__(self, args):
+        self.cache = {}
         print('Web Proxy starting on port: %i...' % (args.port))
+        LOCAL_HOST = '127.0.0.1'
+        PORT = args.port
+        client = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        client.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR, 1)
+            # 2. Bind the server socket to server address and server port
+        client.bind((LOCAL_HOST, PORT))
+            # 3. Continuously listen for connections to server socket
+        client.listen()
+            # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
+        live = True
+        while live:
+            conn, _ = client.accept()
+            self.handleRequest(conn)
+            #live = False
+        client.close()
 
 # Do not delete or modify the code below
 if __name__ == "__main__":
