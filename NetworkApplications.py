@@ -232,22 +232,46 @@ class Traceroute(ICMPPing):
 
 class WebServer(NetworkApplication):
 
-    def handleRequest(tcpSocket):
+    def handleRequest(self, tcpSocket : socket.socket):
         # 1. Receive request message from the client on connection socket
+        data = tcpSocket.recv(2048)
+        httpsHeader = data.decode()
+        filePath = "." + data.split()[1].decode()
+
+        try:
+            file = open(filePath,'r')
+            content = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"""
+            content += file.read()
+        except FileNotFoundError:
+            content = """HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n"""
+            content += """<html><body><p>404 Not Found</p></body></html>"""
+        tcpSocket.send(content.encode())
+        tcpSocket.close()
         # 2. Extract the path of the requested object from the message (second part of the HTTP header)
         # 3. Read the corresponding file from disk
         # 4. Store in temporary buffer
         # 5. Send the correct HTTP response error
         # 6. Send the content of the file to the socket
         # 7. Close the connection socket
-        pass
 
     def __init__(self, args):
         print('Web Server starting on port: %i...' % (args.port))
         # 1. Create server socket
-        # 2. Bind the server socket to server address and server port
-        # 3. Continuously listen for connections to server socket
-        # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
+        LOCAL_HOST = '127.0.0.1'
+        PORT = args.port
+        server = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR, 1)
+            # 2. Bind the server socket to server address and server port
+        server.bind((LOCAL_HOST, PORT))
+            # 3. Continuously listen for connections to server socket
+        server.listen()
+            # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
+        live = True
+        while live:
+            conn, _ = server.accept()
+            self.handleRequest(conn)
+            live = False
+        server.close()
         # 5. Close server socket
 
 
