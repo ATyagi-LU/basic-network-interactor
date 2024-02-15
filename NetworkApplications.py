@@ -235,24 +235,24 @@ class WebServer(NetworkApplication):
     def handleRequest(self, tcpSocket : socket.socket):
         # 1. Receive request message from the client on connection socket
         data = tcpSocket.recv(2048)
+        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
         httpsHeader = data.decode()
         filePath = "." + data.split()[1].decode()
 
         try:
+            # 3. Read the corresponding file from disk
             file = open(filePath,'r')
+            # 4. Store in temporary buffer
             content = """HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"""
             content += file.read()
         except FileNotFoundError:
+            # 5. Send the correct HTTP response error
             content = """HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n"""
             content += """<html><body><p>404 Not Found</p></body></html>"""
-        tcpSocket.send(content.encode())
-        tcpSocket.close()
-        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        # 3. Read the corresponding file from disk
-        # 4. Store in temporary buffer
-        # 5. Send the correct HTTP response error
         # 6. Send the content of the file to the socket
+        tcpSocket.send(content.encode())
         # 7. Close the connection socket
+        tcpSocket.close()
 
     def __init__(self, args):
         print('Web Server starting on port: %i...' % (args.port))
