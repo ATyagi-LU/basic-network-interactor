@@ -320,6 +320,8 @@ class Proxy(NetworkApplication):
                 tcpSocket.send(buffer.encode())
                 tcpSocket.close()
                 return
+            except KeyboardInterrupt:
+                exit(-1)
         # 6. Send the content of the file to the socket
         tcpSocket.send(buffer)
         # 7. Close the connection socket
